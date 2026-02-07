@@ -1,8 +1,9 @@
-const URL  = import.meta.env.VITE_MQTT_URL  || "wss://mqtt.modelsofbrainwing.com:8883/mqtt";
-const USER = import.meta.env.VITE_MQTT_USER || "reactuser";
-const PASS = import.meta.env.VITE_MQTT_PASS || "scaleModel";
 
-export const PROJECT = import.meta.env.VITE_MQTT_PROJECT || "platinum";
+const URL  =  "wss://mqtt.modelsofbrainwing.com:8883/mqtt";
+const USER =  "reactuser";
+const PASS =  "scaleModel";
+
+export const PROJECT = "jpinfra";
 export const t = (path: string): string => `${PROJECT}/${path}`;
 
 let client: any;
@@ -90,6 +91,7 @@ export async function onMessage(handler: (topic: string, message: Buffer) => voi
 }
 
 let lastAckTs = 0;
+
 let hbTimer: NodeJS.Timeout | null = null;
 
 export function recordAck(): void {
