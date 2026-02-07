@@ -1,0 +1,17 @@
+building_id,i2c_address,floor_id,strip_index,pin,rooms,leds_per_room,room_leds,segment_types,room_mapping
+1,8,1,0,13,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,2,1,12,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,3,2,11,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,4,3,10,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,5,4,9,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,6,5,8,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,7,6,7,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,8,7,6,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,9,8,5,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,10,9,4,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,11,10,3,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,12,11,2,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,13,12,14,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,14,13,15,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,15,14,16,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,16,15,17,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:2,2:6,3:3,4:4,5:8,6:5
