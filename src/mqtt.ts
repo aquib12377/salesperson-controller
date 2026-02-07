@@ -1,5 +1,5 @@
 
-const URL  =  "wss://mqtt.modelsofbrainwing.com:8883/mqtt";
+const URL  =  "wss://mqtt.modelsofbrainwing.com:8083/mqtt";
 const USER =  "reactuser";
 const PASS =  "scaleModel";
 
