@@ -1,6 +1,6 @@
 building_id,i2c_address,floor_id,strip_index,pin,rooms,leds_per_room,room_leds,segment_types,room_mapping
-1,8,1,0,13,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
-1,8,2,1,12,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,1,0,13,8,10,0;17;0;16;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
+1,8,2,1,12,8,10,0;17;;16;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
 1,8,3,2,11,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
 1,8,4,3,10,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
 1,8,5,4,9,8,10,4;13;2;14;15;14;14;13,lobby,room,lobby,room,room,room,room,room,1:5,2:6,3:1,4:4,5:3,6:2
