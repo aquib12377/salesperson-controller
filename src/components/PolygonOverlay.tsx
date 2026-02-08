@@ -1,4 +1,5 @@
 import { useAppStore } from '../store';
+import { sendCommand } from '../mqtt';
 
 /**
  * Calculate room number based on floor and room
@@ -72,6 +73,27 @@ export default function PolygonOverlay() {
     return null;
   }
 
+  const handleRoomClick = async (roomId: string, roomNumber: string) => {
+    console.log(`[PolygonOverlay] Room ${roomId} (${roomNumber}) clicked on floor ${currentFloor}`);
+    
+    // Navigate to room
+    selectRoom(roomId);
+    
+    // Send LED command to turn room ON (cyan)
+    // Skip commercial floors (1, 2) and amenities (16)
+    if (currentFloor >= 3 && currentFloor <= 15) {
+      const roomNumInt = parseInt(roomId);
+      console.log(`[PolygonOverlay] Sending LED command: Floor ${currentFloor}, Room ${roomNumInt}`);
+      
+      await sendCommand('set_room_color', { 
+        floor: currentFloor, 
+        room: roomNumInt 
+      });
+    } else {
+      console.log(`[PolygonOverlay] Skipping LED command for special floor ${currentFloor}`);
+    }
+  };
+
   return (
     <svg 
       className="polygon-overlay" 
@@ -121,10 +143,7 @@ export default function PolygonOverlay() {
             {/* Polygon */}
             <polygon
               points={roomData.points}
-              onClick={() => {
-                console.log(`[PolygonOverlay] Room ${roomData.room} (${roomNumber}) clicked`);
-                selectRoom(roomData.room);
-              }}
+              onClick={() => handleRoomClick(roomData.room, roomNumber)}
               className={`room-polygon ${isSelected ? 'selected' : ''}`}
               data-room={roomData.room}
               data-room-number={roomNumber}

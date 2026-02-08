@@ -4,6 +4,7 @@ interface Floor { id: number; label: string; imageValue?: string; }
 interface Room { id: string; floor: number; }
 interface ViewImage { room: string; direction: string; filename: string; floorNum?: string; }
 interface RoomPolygon { room: string; floor: number; points: string; }
+interface AvailabilityData { floor: number; room: number; status: number; }
 
 interface AppState {
   currentPage: 'home' | 'floorMap';
@@ -18,9 +19,10 @@ interface AppState {
   floors: Floor[];
   floorToImageVal: Map<number, string>;
   viewsByRoom: Map<string, ViewImage[]>;
-  roomPolygons: Map<string, RoomPolygon[]>; // NEW: Maps "floor-room" to polygon data
+  roomPolygons: Map<string, RoomPolygon[]>;
   buildings: Map<number, any>;
-  availability: Map<string, string>;
+  availability: Map<string, number>; // NEW: key="floor-room", value=status (0=sold,1=available,2=blocked)
+  availabilityList: AvailabilityData[]; // NEW: Array format for sending to ESP32
 
   connected: boolean;
   deviceAlive: boolean;
@@ -65,6 +67,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   roomPolygons: new Map(),
   buildings: new Map(),
   availability: new Map(),
+  availabilityList: [],
 
   connected: false,
   deviceAlive: false,
@@ -162,92 +165,59 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       console.group('[Store][CSV] loadCSVData START');
 
+      // ========== Load flpx.csv ==========
       console.log('[CSV] Fetching file → /flpx.csv');
       const flpxRes = await fetch('/flpx.csv');
-
-      console.log('[CSV] Fetch response:', {
-        ok: flpxRes.ok,
-        status: flpxRes.status,
-        statusText: flpxRes.statusText
-      });
-
       const flpxText = await flpxRes.text();
-      console.log('[CSV] Raw CSV length:', flpxText.length);
-
       const flpxLines = flpxText.trim().split('\n');
-      console.log('[CSV] Total lines (including header):', flpxLines.length);
 
       const floorMap = new Map<number, string>();
       const viewsMap = new Map<string, ViewImage[]>();
       const polygonsMap = new Map<string, RoomPolygon[]>();
       const floorsSet = new Set<number>();
 
-      console.log('[CSV] Parsing rows (skipping header)...');
-      console.log('[CSV] Expected format: floor,image,room,room o,view,points');
+      console.log('[CSV] Parsing flpx.csv rows (skipping header)...');
 
       for (let i = 1; i < flpxLines.length; i++) {
         const line = flpxLines[i];
+        if (!line || !line.includes(',')) continue;
 
-        if (!line || !line.includes(',')) {
-          console.warn(`[CSV] Skipping malformed line ${i}:`, line);
-          continue;
-        }
-
-        // CSV Format: floor,image,room,room o,view,points
         const parts = parseCSVLine(line);
-        
-        if (parts.length < 6) {
-          console.warn(`[CSV] Skipping line ${i} - insufficient columns:`, parts);
-          continue;
-        }
+        if (parts.length < 6) continue;
 
         const [floorNum, imageNum, roomNum, roomOriginal, view, points] = parts;
 
-        /* ---------- Floor mapping ---------- */
+        // Floor mapping
         const floor = parseInt(floorNum.trim());
         if (!Number.isNaN(floor)) {
-          if (!floorsSet.has(floor)) {
-            console.log(`[CSV] New floor detected → ${floor}`);
-          }
-
           floorsSet.add(floor);
-
-          // Map floor to image number
           if (!floorMap.has(floor)) {
-            const imgVal = imageNum.trim();
-            console.log(`[CSV] Mapping floor ${floor} → image ${imgVal}`);
-            floorMap.set(floor, imgVal);
+            floorMap.set(floor, imageNum.trim());
           }
         } else {
-          console.warn(`[CSV] Invalid floor number at line ${i}:`, floorNum);
           continue;
         }
 
-        /* ---------- Room / view mapping ---------- */
+        // Room / view mapping
         const roomKey = roomNum.trim();
-
-        // Initialize room views map
         if (!viewsMap.has(roomKey)) {
           viewsMap.set(roomKey, []);
         }
 
-        // The "view" column contains directions like "N1,W1" or "N1"
         const directions = view.trim().split(',');
-
-        // Create a view entry for each direction
         directions.forEach(direction => {
           const dir = direction.trim();
           if (dir) {
             viewsMap.get(roomKey)!.push({
               room: roomKey,
-              direction: dir, // Store full direction like "N1"
+              direction: dir,
               filename: `${dir[0]}/${Number.parseInt(floorNum)-2}.webp`,
               floorNum: floorNum.trim()
             });
           }
         });
 
-        /* ---------- Polygon mapping ---------- */
+        // Polygon mapping
         const polygonKey = `${floor}-${roomKey}`;
         if (!polygonsMap.has(polygonKey)) {
           polygonsMap.set(polygonKey, []);
@@ -258,15 +228,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           floor: floor,
           points: points.trim()
         });
-
-        if (i <= 5) { // Log first few entries for debugging
-          console.log(
-            `[CSV] Line ${i} → Floor: ${floor}, Room: ${roomKey}, Views: ${directions.join(', ')}, Points: ${points.trim().substring(0, 30)}...`
-          );
-        }
       }
-
-      console.log('[CSV] Parsing complete');
 
       const floors = Array.from(floorsSet)
         .sort((a, b) => a - b)
@@ -276,31 +238,74 @@ export const useAppStore = create<AppState>((set, get) => ({
           imageValue: floorMap.get(id)
         }));
 
-      console.log('[CSV] Floors generated:', floors);
-      console.log('[CSV] Total unique floors:', floors.length);
-      console.log('[CSV] Total unique rooms:', viewsMap.size);
-      console.log('[CSV] Total polygon entries:', polygonsMap.size);
-
-      // Log sample data
-      const firstRoom = Array.from(viewsMap.keys())[0];
-      if (firstRoom) {
-        console.log(`[CSV] Sample room "${firstRoom}" views:`, viewsMap.get(firstRoom));
-      }
-
-      const firstPolygon = Array.from(polygonsMap.keys())[0];
-      if (firstPolygon) {
-        console.log(`[CSV] Sample polygon "${firstPolygon}":`, polygonsMap.get(firstPolygon));
-      }
-
-      set({
-        floors,
-        floorToImageVal: floorMap,
-        viewsByRoom: viewsMap,
-        roomPolygons: polygonsMap,
-        csvLoaded: true
+      console.log('[CSV] flpx.csv parsed:', {
+        floors: floors.length,
+        rooms: viewsMap.size,
+        polygons: polygonsMap.size
       });
 
-      console.log('[Store][CSV] State updated successfully');
+      // ========== Load availability.csv (NEW) ==========
+      console.log('[CSV] Fetching file → /availability.csv');
+      const availRes = await fetch('/availability.csv');
+      
+      if (!availRes.ok) {
+        console.warn('[CSV] availability.csv not found or error:', availRes.status);
+      } else {
+        const availText = await availRes.text();
+        const availLines = availText.trim().split('\n');
+        
+        const availMap = new Map<string, number>();
+        const availList: AvailabilityData[] = [];
+
+        console.log('[CSV] Parsing availability.csv rows (skipping header)...');
+
+        for (let i = 1; i < availLines.length; i++) {
+          const line = availLines[i];
+          if (!line || !line.includes(',')) continue;
+
+          const parts = line.split(',').map(p => p.trim());
+          if (parts.length < 4) continue;
+
+          const [buildingId, floorId, roomId, status] = parts;
+          
+          const floor = parseInt(floorId);
+          const room = parseInt(roomId);
+          const statusCode = parseInt(status);
+
+          if (!Number.isNaN(floor) && !Number.isNaN(room) && !Number.isNaN(statusCode)) {
+            const key = `${floor}-${room}`;
+            availMap.set(key, statusCode);
+            
+            // Also create array format for sending to ESP32
+            availList.push({
+              floor: floor,
+              room: room,
+              status: statusCode
+            });
+          }
+        }
+
+        console.log('[CSV] availability.csv parsed:', {
+          entries: availMap.size,
+          available: availList.filter(a => a.status === 1).length,
+          blocked: availList.filter(a => a.status === 2).length,
+          sold: availList.filter(a => a.status === 0).length
+        });
+
+        // Update state with availability data
+        set({
+          floors,
+          floorToImageVal: floorMap,
+          viewsByRoom: viewsMap,
+          roomPolygons: polygonsMap,
+          availability: availMap,
+          availabilityList: availList,
+          csvLoaded: true
+        });
+
+        console.log('[Store][CSV] State updated successfully with availability data');
+      }
+
       console.groupEnd();
 
     } catch (error) {
