@@ -21,8 +21,8 @@ interface AppState {
   viewsByRoom: Map<string, ViewImage[]>;
   roomPolygons: Map<string, RoomPolygon[]>;
   buildings: Map<number, any>;
-  availability: Map<string, number>; // NEW: key="floor-room", value=status (0=sold,1=available,2=blocked)
-  availabilityList: AvailabilityData[]; // NEW: Array format for sending to ESP32
+  availability: Map<string, number>; // key="floor-room", value=status (0=sold,1=available,2=blocked)
+  availabilityList: AvailabilityData[]; // Array format for sending to ESP32
 
   connected: boolean;
   deviceAlive: boolean;
@@ -244,12 +244,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         polygons: polygonsMap.size
       });
 
-      // ========== Load availability.csv (NEW) ==========
+      // ========== Load availability.csv ==========
       console.log('[CSV] Fetching file → /availability.csv');
       const availRes = await fetch('/availability.csv');
       
       if (!availRes.ok) {
         console.warn('[CSV] availability.csv not found or error:', availRes.status);
+        
+        // Still update state with floor data even if availability fails
+        set({
+          floors,
+          floorToImageVal: floorMap,
+          viewsByRoom: viewsMap,
+          roomPolygons: polygonsMap,
+          csvLoaded: true
+        });
       } else {
         const availText = await availRes.text();
         const availLines = availText.trim().split('\n');
@@ -258,6 +267,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const availList: AvailabilityData[] = [];
 
         console.log('[CSV] Parsing availability.csv rows (skipping header)...');
+        console.log('[CSV] ⚠️ IMPORTANT: Filtering out lobby rooms (CSV rooms 1-2)');
 
         for (let i = 1; i < availLines.length; i++) {
           const line = availLines[i];
@@ -269,28 +279,63 @@ export const useAppStore = create<AppState>((set, get) => ({
           const [buildingId, floorId, roomId, status] = parts;
           
           const floor = parseInt(floorId);
-          const room = parseInt(roomId);
+          const csvRoom = parseInt(roomId);  // Room from CSV (1-8)
           const statusCode = parseInt(status);
 
-          if (!Number.isNaN(floor) && !Number.isNaN(room) && !Number.isNaN(statusCode)) {
-            const key = `${floor}-${room}`;
+          // ===== CRITICAL FIX: Filter out lobby rooms (1-2) =====
+          // CSV rooms 1-2 are lobbies (segments 0-1) - SKIP THEM
+          // CSV rooms 3-8 are actual rooms (segments 2-7) - USE THEM
+          if (csvRoom < 3 || csvRoom > 8) {
+            if (i <= 20) {  // Only log first few
+              console.log(`[CSV] ⏭️ Skipping lobby: Floor ${floor}, CSV Room ${csvRoom}`);
+            }
+            continue;
+          }
+
+          // Convert CSV room (3-8) to UI room (1-6)
+          // CSV Room 3 → UI Room 1 (Arduino segment 2)
+          // CSV Room 4 → UI Room 2 (Arduino segment 3)
+          // CSV Room 5 → UI Room 3 (Arduino segment 4)
+          // CSV Room 6 → UI Room 4 (Arduino segment 5)
+          // CSV Room 7 → UI Room 5 (Arduino segment 6)
+          // CSV Room 8 → UI Room 6 (Arduino segment 7)
+          const uiRoom = csvRoom - 2;
+
+          if (!Number.isNaN(floor) && !Number.isNaN(uiRoom) && !Number.isNaN(statusCode)) {
+            const key = `${floor}-${uiRoom}`;
             availMap.set(key, statusCode);
             
-            // Also create array format for sending to ESP32
+            // Store with UI room numbers for sending to ESP32
             availList.push({
               floor: floor,
-              room: room,
+              room: uiRoom,  // UI room number (1-6), NOT CSV room (3-8)
               status: statusCode
             });
+            
+            // Log sample conversions
+            if (availList.length <= 10) {
+              const statusName = statusCode === 0 ? 'SOLD' : statusCode === 1 ? 'AVAILABLE' : 'BLOCKED';
+              console.log(`[CSV] ✅ Floor ${floor}, CSV Room ${csvRoom} → UI Room ${uiRoom}: ${statusName}`);
+            }
           }
         }
 
         console.log('[CSV] availability.csv parsed:', {
-          entries: availMap.size,
+          totalEntries: availMap.size,
           available: availList.filter(a => a.status === 1).length,
           blocked: availList.filter(a => a.status === 2).length,
           sold: availList.filter(a => a.status === 0).length
         });
+
+        // Log some examples of non-available rooms
+        const nonAvailable = availList.filter(a => a.status !== 1);
+        if (nonAvailable.length > 0) {
+          console.log('[CSV] Sample non-available rooms:');
+          nonAvailable.slice(0, 5).forEach(item => {
+            const statusName = item.status === 0 ? 'SOLD (Blue)' : 'BLOCKED (Yellow)';
+            console.log(`  Floor ${item.floor}, UI Room ${item.room}: ${statusName}`);
+          });
+        }
 
         // Update state with availability data
         set({
@@ -303,7 +348,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           csvLoaded: true
         });
 
-        console.log('[Store][CSV] State updated successfully with availability data');
+        console.log('[Store][CSV] ✅ State updated successfully with availability data');
       }
 
       console.groupEnd();
