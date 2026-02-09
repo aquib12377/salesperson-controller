@@ -7,13 +7,14 @@ interface RoomPolygon { room: string; floor: number; points: string; }
 interface AvailabilityData { floor: number; room: number; status: number; }
 
 interface AppState {
-  currentPage: 'home' | 'floorMap';
+  currentPage: 'login' | 'home' | 'floorMap' | 'admin';
   currentMode: 'floor' | 'room' | 'view';
   currentFloor: number | null;
   currentRoom: string | null;
   currentDirection: string | null;
   currentBuilding: number;
   zoom: number;
+  userRole: 'sales' | 'admin' | null;
 
   csvLoaded: boolean;
   floors: Floor[];
@@ -21,8 +22,8 @@ interface AppState {
   viewsByRoom: Map<string, ViewImage[]>;
   roomPolygons: Map<string, RoomPolygon[]>;
   buildings: Map<number, any>;
-  availability: Map<string, number>; // key="floor-room", value=status (0=sold,1=available,2=blocked)
-  availabilityList: AvailabilityData[]; // Array format for sending to ESP32
+  availability: Map<string, number>;
+  availabilityList: AvailabilityData[];
 
   connected: boolean;
   deviceAlive: boolean;
@@ -36,7 +37,7 @@ interface AppState {
   relayState: { surrounding: boolean; terrace: boolean };
   lastActive: any;
 
-  setPage: (page: 'home' | 'floorMap') => void;
+  setPage: (page: 'login' | 'home' | 'floorMap' | 'admin') => void;
   setMode: (mode: 'floor' | 'room' | 'view') => void;
   selectFloor: (floor: number | null) => void;
   selectRoom: (room: string | null) => void;
@@ -44,21 +45,26 @@ interface AppState {
   setConnected: (connected: boolean) => void;
   setDeviceAlive: (alive: boolean) => void;
   setClientIdentity: (id: string, name: string) => void;
+  setUserRole: (role: 'sales' | 'admin' | null) => void;
   setCastState: (casting: boolean, holderId?: string | null, holderName?: string | null) => void;
   toggleControlsSidebar: () => void;
   updateRelayState: (relay: 'surrounding' | 'terrace', active: boolean) => void;
+  updateAvailability: (floor: number, room: number, status: number) => void;
   loadCSVData: () => Promise<void>;
   reset: () => void;
+  logout: () => void;
+  checkAuth: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  currentPage: 'home',
+  currentPage: 'login',
   currentMode: 'floor',
   currentFloor: null,
   currentRoom: null,
   currentDirection: null,
   currentBuilding: 1,
   zoom: 1,
+  userRole: null,
 
   csvLoaded: false,
   floors: [],
@@ -139,6 +145,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ clientId: id, displayName: name });
   },
 
+  setUserRole: (role) => {
+    console.log('[Store] User role →', role);
+    set({ userRole: role });
+  },
+
   setCastState: (casting, holderId, holderName) => {
     console.log('[Store] Cast state →', { casting, holderId, holderName });
     set({
@@ -159,6 +170,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       relayState: { ...state.relayState, [relay]: active }
     }));
+  },
+
+  updateAvailability: (floor, room, status) => {
+    console.log('[Store] Update availability →', { floor, room, status });
+    const key = `${floor}-${room}`;
+    
+    set((state) => {
+      const newAvailability = new Map(state.availability);
+      newAvailability.set(key, status);
+      
+      const newAvailabilityList = state.availabilityList.map(item =>
+        item.floor === floor && item.room === room
+          ? { ...item, status }
+          : item
+      );
+      
+      return {
+        availability: newAvailability,
+        availabilityList: newAvailabilityList
+      };
+    });
   },
 
   loadCSVData: async () => {
@@ -187,7 +219,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         const [floorNum, imageNum, roomNum, roomOriginal, view, points] = parts;
 
-        // Floor mapping
         const floor = parseInt(floorNum.trim());
         if (!Number.isNaN(floor)) {
           floorsSet.add(floor);
@@ -198,7 +229,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           continue;
         }
 
-        // Room / view mapping
         const roomKey = roomNum.trim();
         if (!viewsMap.has(roomKey)) {
           viewsMap.set(roomKey, []);
@@ -217,7 +247,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         });
 
-        // Polygon mapping
         const polygonKey = `${floor}-${roomKey}`;
         if (!polygonsMap.has(polygonKey)) {
           polygonsMap.set(polygonKey, []);
@@ -251,7 +280,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!availRes.ok) {
         console.warn('[CSV] availability.csv not found or error:', availRes.status);
         
-        // Still update state with floor data even if availability fails
         set({
           floors,
           floorToImageVal: floorMap,
@@ -279,40 +307,28 @@ export const useAppStore = create<AppState>((set, get) => ({
           const [buildingId, floorId, roomId, status] = parts;
           
           const floor = parseInt(floorId);
-          const csvRoom = parseInt(roomId);  // Room from CSV (1-8)
+          const csvRoom = parseInt(roomId);
           const statusCode = parseInt(status);
 
-          // ===== CRITICAL FIX: Filter out lobby rooms (1-2) =====
-          // CSV rooms 1-2 are lobbies (segments 0-1) - SKIP THEM
-          // CSV rooms 3-8 are actual rooms (segments 2-7) - USE THEM
           if (csvRoom < 3 || csvRoom > 8) {
-            if (i <= 20) {  // Only log first few
+            if (i <= 20) {
               console.log(`[CSV] ⏭️ Skipping lobby: Floor ${floor}, CSV Room ${csvRoom}`);
             }
             continue;
           }
 
-          // Convert CSV room (3-8) to UI room (1-6)
-          // CSV Room 3 → UI Room 1 (Arduino segment 2)
-          // CSV Room 4 → UI Room 2 (Arduino segment 3)
-          // CSV Room 5 → UI Room 3 (Arduino segment 4)
-          // CSV Room 6 → UI Room 4 (Arduino segment 5)
-          // CSV Room 7 → UI Room 5 (Arduino segment 6)
-          // CSV Room 8 → UI Room 6 (Arduino segment 7)
           const uiRoom = csvRoom - 2;
 
           if (!Number.isNaN(floor) && !Number.isNaN(uiRoom) && !Number.isNaN(statusCode)) {
             const key = `${floor}-${uiRoom}`;
             availMap.set(key, statusCode);
             
-            // Store with UI room numbers for sending to ESP32
             availList.push({
               floor: floor,
-              room: uiRoom,  // UI room number (1-6), NOT CSV room (3-8)
+              room: uiRoom,
               status: statusCode
             });
             
-            // Log sample conversions
             if (availList.length <= 10) {
               const statusName = statusCode === 0 ? 'SOLD' : statusCode === 1 ? 'AVAILABLE' : 'BLOCKED';
               console.log(`[CSV] ✅ Floor ${floor}, CSV Room ${csvRoom} → UI Room ${uiRoom}: ${statusName}`);
@@ -327,17 +343,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           sold: availList.filter(a => a.status === 0).length
         });
 
-        // Log some examples of non-available rooms
-        const nonAvailable = availList.filter(a => a.status !== 1);
-        if (nonAvailable.length > 0) {
-          console.log('[CSV] Sample non-available rooms:');
-          nonAvailable.slice(0, 5).forEach(item => {
-            const statusName = item.status === 0 ? 'SOLD (Blue)' : 'BLOCKED (Yellow)';
-            console.log(`  Floor ${item.floor}, UI Room ${item.room}: ${statusName}`);
-          });
-        }
-
-        // Update state with availability data
         set({
           floors,
           floorToImageVal: floorMap,
@@ -360,6 +365,57 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  // NEW: Check authentication on app load
+  checkAuth: () => {
+    const savedRole = localStorage.getItem('jp_user_role') as 'sales' | 'admin' | null;
+    const savedPage = localStorage.getItem('jp_current_page') as 'home' | 'floorMap' | 'admin' | null;
+    const savedClientId = localStorage.getItem('jp_client_id');
+    const savedDisplayName = localStorage.getItem('jp_display_name');
+    
+    if (savedRole && savedPage && savedClientId && savedDisplayName) {
+      console.log('[Store] Restoring session:', { savedRole, savedPage, savedDisplayName });
+      
+      set({
+        userRole: savedRole,
+        currentPage: savedPage,
+        clientId: savedClientId,
+        displayName: savedDisplayName
+      });
+      
+      // Load CSV data if not already loaded
+      const { csvLoaded, loadCSVData } = get();
+      if (!csvLoaded) {
+        loadCSVData();
+      }
+    } else {
+      console.log('[Store] No saved session found');
+      set({ currentPage: 'login' });
+    }
+  },
+
+  // NEW: Logout function
+  logout: () => {
+    console.log('[Store] Logging out');
+    
+    // Clear localStorage
+    localStorage.removeItem('jp_user_role');
+    localStorage.removeItem('jp_current_page');
+    localStorage.removeItem('jp_client_id');
+    localStorage.removeItem('jp_display_name');
+    
+    // Reset state
+    set({
+      currentPage: 'login',
+      userRole: null,
+      clientId: '',
+      displayName: '',
+      currentFloor: null,
+      currentRoom: null,
+      currentDirection: null,
+      currentMode: 'floor'
+    });
+  },
+
   reset: () => {
     console.log('[Store] Reset navigation state');
     set({
@@ -372,9 +428,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   }
 }));
 
-/**
- * Parse CSV line handling quoted values
- */
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = '';

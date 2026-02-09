@@ -13,6 +13,20 @@ export default function ControlsSidebar() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState('');
 
+  const handleAllLights = async () => {
+    console.log('[ControlsSidebar] All Lights - Sending white_all command');
+    
+    // Step 1: Send white_all command
+    await sendCommand('white_all');
+    
+    // Wait a moment for the first command to be processed
+    await delay(200);
+    
+    // Step 2: Send command to turn rooms 4 & 5 of floor 6 red
+    console.log('[ControlsSidebar] Sending command to turn Floor 6, Rooms 4 & 5 RED');
+    await sendCommand('floor6_refugee_red', { floor: 6, rooms: [4, 5] });
+  };
+
   const handleAvailability = async () => {
     console.log('[ControlsSidebar] Starting availability mode');
     
@@ -26,14 +40,12 @@ export default function ControlsSidebar() {
     setProgress('Initializing...');
     
     try {
-      // Step 1: Send base green command (no data needed)
       console.log('[ControlsSidebar] Step 1: Sending base GREEN command');
       setProgress('Setting base green...');
       
       await sendCommand('avail_base_green');
-      await delay(100); // Wait for ESP32 to process
+      await delay(100);
       
-      // Step 2: Group availability data by floor
       console.log('[ControlsSidebar] Step 2: Grouping data by floor');
       const floorGroups = new Map<number, Array<{room: number, status: number}>>();
       
@@ -49,16 +61,13 @@ export default function ControlsSidebar() {
       
       console.log(`[ControlsSidebar] Grouped into ${floorGroups.size} floors`);
       
-      // Step 3: Send floor by floor
       let processedFloors = 0;
       const totalFloors = floorGroups.size;
       
       for (const [floor, rooms] of floorGroups.entries()) {
-        // Filter for non-available rooms only (blocked and sold)
-        const blockedRooms = rooms.filter(r => r.status === 2); // Yellow
-        const soldRooms = rooms.filter(r => r.status === 0);     // Blue
+        const blockedRooms = rooms.filter(r => r.status === 2);
+        const soldRooms = rooms.filter(r => r.status === 0);
         
-        // Only send if there are non-available rooms
         if (blockedRooms.length > 0 || soldRooms.length > 0) {
           console.log(`[ControlsSidebar] Processing Floor ${floor}: ${blockedRooms.length} blocked, ${soldRooms.length} sold`);
           setProgress(`Floor ${floor}... (${processedFloors + 1}/${totalFloors})`);
@@ -69,13 +78,12 @@ export default function ControlsSidebar() {
             sold: soldRooms.map(r => r.room)
           });
           
-          await delay(150); // Wait between floors
+          await delay(150);
         }
         
         processedFloors++;
       }
       
-      // Step 4: Complete
       console.log('[ControlsSidebar] ✅ Availability mode complete');
       setProgress('Complete!');
       await delay(1000);
@@ -106,7 +114,7 @@ export default function ControlsSidebar() {
             <div className="control-section">
               <h4 className="section-title">Patterns</h4>
               <div className="control-grid">
-                <button onClick={() => sendCommand('white_all')} className="control-btn">
+                <button onClick={handleAllLights} className="control-btn">
                   All Lights
                 </button>
                 <button onClick={() => sendCommand('set_all_floors_off')} className="control-btn">
@@ -146,7 +154,6 @@ export default function ControlsSidebar() {
               </div>
             </div>
             
-            {/* Availability Legend */}
             <div className="control-section">
               <h4 className="section-title">Availability Legend</h4>
               <div className="availability-legend">
