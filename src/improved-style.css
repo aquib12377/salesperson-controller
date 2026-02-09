@@ -751,3 +751,68 @@ body {
     min-width: 44px;
   }
 }
+/* ============================================
+   FULLSCREEN BUTTON
+   ============================================ */
+.fullscreen-btn {
+  position: fixed;
+  bottom: calc(1rem + var(--safe-bottom));
+  left: 1rem;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.5);
+  transition: all 0.3s ease;
+  z-index: 9999;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fullscreen-btn:hover,
+.fullscreen-btn:active {
+  transform: scale(1.1);
+  box-shadow: 0 6px 30px rgba(102, 126, 234, 0.7);
+  background: linear-gradient(135deg, #7c8ff0 0%, #8a5db8 100%);
+}
+
+.fullscreen-btn:active {
+  transform: scale(0.95);
+}
+
+.fullscreen-btn svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2.5;
+}
+
+@media (min-width: 768px) {
+  .fullscreen-btn {
+    width: 56px;
+    height: 56px;
+    bottom: calc(1.5rem + var(--safe-bottom));
+    left: 1.5rem;
+  }
+
+  .fullscreen-btn svg {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+@media (max-width: 480px) {
+  .fullscreen-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .fullscreen-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+} 
