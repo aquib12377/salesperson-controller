@@ -1,13 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAppStore } from '../store';
 import { getClient, subscribe, onMessage, recordAck, startHeartbeat, stopHeartbeat, isDeviceAlive, t } from '../mqtt';
-import AmenitiesControl from '../components/AmenitiesControl';
 
 interface Props { active: boolean; }
 
 export default function HomePage({ active }: Props) {
-  const { selectFloor, toggleControlsSidebar, displayName, setConnected, setDeviceAlive, setPage,logout   } = useAppStore();
-  const [showAmenities, setShowAmenities] = useState(false);
+  const { selectFloor, toggleControlsSidebar, displayName, setConnected, setDeviceAlive, logout } = useAppStore();
 
   // MQTT connection setup
   useEffect(() => {
@@ -87,8 +85,8 @@ export default function HomePage({ active }: Props) {
     }
   }, [active]);
 
-const handleLogout = () => {
-    logout(); // Use the store function
+  const handleLogout = () => {
+    logout();
   };
 
   if (!active) return null;
@@ -123,12 +121,6 @@ const handleLogout = () => {
               <span className="text-xs md:text-sm text-white/70 mt-1">Patterns & settings</span>
             </button>
 
-            <button onClick={() => setShowAmenities(true)} className="action-card">
-              <i data-lucide="building-2" className="w-6 h-6 md:w-8 md:h-8 mb-2 md:mb-3"></i>
-              <span className="text-lg md:text-xl font-semibold">Amenities</span>
-              <span className="text-xs md:text-sm text-white/70 mt-1">16th Floor Facilities</span>
-            </button>
-
             <button onClick={handleLogout} className="action-card bg-red-600/20 border-red-600/40 hover:bg-red-600/30">
               <i data-lucide="log-out" className="w-6 h-6 md:w-8 md:h-8 mb-2 md:mb-3"></i>
               <span className="text-lg md:text-xl font-semibold">Logout</span>
@@ -143,8 +135,6 @@ const handleLogout = () => {
           </div>
         </div>
       </div>
-
-      <AmenitiesControl isOpen={showAmenities} onClose={() => setShowAmenities(false)} />
     </div>
   );
 }

@@ -6,15 +6,20 @@ export default function FloorSelector() {
 
   const handleFloorClick = async (floorId: number) => {
     console.log(`[FloorSelector] Floor ${floorId} clicked`);
-    
+
     // Navigate to floor
     selectFloor(floorId);
-    
+
     // Send LED command to turn floor ON (white)
     // Skip commercial floors (1, 2) and amenities (16)
     if (floorId >= 3 && floorId <= 15) {
       console.log(`[FloorSelector] Sending LED command for floor ${floorId}`);
-      await sendCommand('set_floor_color', { floor: floorId });
+      if (floorId === 15) {
+        sendCommand('relay_toggle', { relay: 'terrace' });
+      }
+      else {
+        await sendCommand('set_floor_color', { floor: floorId });
+      }
     } else {
       console.log(`[FloorSelector] Skipping LED command for special floor ${floorId}`);
     }
