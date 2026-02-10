@@ -5,7 +5,17 @@ import { getClient, subscribe, onMessage, recordAck, startHeartbeat, stopHeartbe
 interface Props { active: boolean; }
 
 export default function HomePage({ active }: Props) {
-  const { selectFloor, toggleControlsSidebar, displayName, setConnected, setDeviceAlive, logout } = useAppStore();
+  const { 
+    selectFloor, 
+    toggleControlsSidebar, 
+    displayName, 
+    clientId,
+    setConnected, 
+    setDeviceAlive, 
+    logout,
+    updateCastLock,
+    setCastState
+  } = useAppStore();
 
   // MQTT connection setup
   useEffect(() => {
@@ -48,6 +58,31 @@ export default function HomePage({ active }: Props) {
         
         try {
           const payload = JSON.parse(s);
+          
+          // Handle cast/state messages for lock management
+          if (topic === t('cast/state')) {
+            console.log('[HomePage] Cast state received:', payload);
+            
+            const myClientId = localStorage.getItem('jp_client_id') || '';
+            
+            // Update cast lock state
+            updateCastLock(
+              payload.locked === true,
+              payload.holderClientId || null,
+              payload.holderName || null
+            );
+            
+            // Update own casting state
+            if (payload.active && payload.holderClientId === myClientId) {
+              setCastState(true, payload.holderClientId, payload.holderName);
+            } else if (!payload.active) {
+              // Cast released - if it was our cast, mark as not casting
+              setCastState(false, null, null);
+            }
+            
+            return;
+          }
+          
           console.log('[HomePage] Message:', topic, payload);
         } catch (e) {
           console.error('[HomePage] Parse error:', e);
@@ -77,7 +112,7 @@ export default function HomePage({ active }: Props) {
         // ignore
       }
     };
-  }, [setConnected, setDeviceAlive]);
+  }, [setConnected, setDeviceAlive, updateCastLock, setCastState]);
 
   useEffect(() => {
     if (active && (window as any).lucide) {

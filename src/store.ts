@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { AMENITIES_CONFIG, AmenityConfig } from './amenitiesData';
 
 interface Floor { id: number; label: string; imageValue?: string; }
 interface Room { id: string; floor: number; }
@@ -8,13 +9,18 @@ interface AvailabilityData { floor: number; room: number; status: number; }
 
 interface AppState {
   currentPage: 'login' | 'home' | 'floorMap' | 'admin';
-  currentMode: 'floor' | 'room' | 'view';
+  currentMode: 'floor' | 'room' | 'view' | 'amenity';
   currentFloor: number | null;
   currentRoom: string | null;
   currentDirection: string | null;
   currentBuilding: number;
   zoom: number;
   userRole: 'sales' | 'admin' | null;
+
+  // Amenity browsing state
+  amenityMode: boolean;           // Whether sidebar shows amenities instead of floors
+  selectedAmenityId: string | null;  // Currently selected amenity
+  amenityImageIndex: number;      // Current image index for selected amenity
 
   csvLoaded: boolean;
   floors: Floor[];
@@ -29,16 +35,23 @@ interface AppState {
   deviceAlive: boolean;
   clientId: string;
   displayName: string;
+  
+  // Cast state with locking
   isCasting: boolean;
   castHolderClientId: string | null;
   castHolderName: string | null;
+  castLocked: boolean;              // Whether cast is locked by someone
+  castLockedByClientId: string | null;
+  castLockedByName: string | null;
+  autoCasting: boolean;             // Whether auto-cast is in progress
+  autoCastAbort: boolean;           // Signal to abort auto-cast
 
   controlsSidebarOpen: boolean;
   relayState: { surrounding: boolean; terrace: boolean };
   lastActive: any;
 
   setPage: (page: 'login' | 'home' | 'floorMap' | 'admin') => void;
-  setMode: (mode: 'floor' | 'room' | 'view') => void;
+  setMode: (mode: 'floor' | 'room' | 'view' | 'amenity') => void;
   selectFloor: (floor: number | null) => void;
   selectRoom: (room: string | null) => void;
   selectDirection: (direction: string | null) => void;
@@ -54,6 +67,23 @@ interface AppState {
   reset: () => void;
   logout: () => void;
   checkAuth: () => void;
+
+  // Amenity actions
+  enterAmenityMode: () => void;
+  exitAmenityMode: () => void;
+  selectAmenity: (amenityId: string) => void;
+  deselectAmenity: () => void;
+  setAmenityImageIndex: (index: number) => void;
+  getSelectedAmenity: () => AmenityConfig | null;
+
+  // Cast locking actions
+  updateCastLock: (locked: boolean, clientId: string | null, name: string | null) => void;
+  isCastLockedByOther: () => boolean;
+  setAutoCasting: (active: boolean) => void;
+  setAutoCastAbort: (abort: boolean) => void;
+  
+  // Helper to get all current view images for auto-cast
+  getCurrentViewImages: () => { src: string; metadata: any }[];
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -65,6 +95,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentBuilding: 1,
   zoom: 1,
   userRole: null,
+
+  // Amenity state
+  amenityMode: false,
+  selectedAmenityId: null,
+  amenityImageIndex: 0,
 
   csvLoaded: false,
   floors: [],
@@ -82,6 +117,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   isCasting: false,
   castHolderClientId: null,
   castHolderName: null,
+  castLocked: false,
+  castLockedByClientId: null,
+  castLockedByName: null,
+  autoCasting: false,
+  autoCastAbort: false,
 
   controlsSidebarOpen: false,
   relayState: { surrounding: false, terrace: false },
@@ -101,12 +141,31 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectFloor: (floor) => {
     console.log('[Store] selectFloor →', floor);
+    
+    // If floor 16 (Rooftop Amenities) is selected, enter amenity mode
+    if (floor === 16) {
+      set({
+        currentFloor: 16,
+        currentRoom: null,
+        currentDirection: null,
+        currentMode: 'amenity',
+        currentPage: 'floorMap',
+        amenityMode: true,
+        selectedAmenityId: null,
+        amenityImageIndex: 0
+      });
+      return;
+    }
+    
     set({
       currentFloor: floor,
       currentRoom: null,
       currentDirection: null,
       currentMode: 'floor',
-      currentPage: floor ? 'floorMap' : 'home'
+      currentPage: floor ? 'floorMap' : 'home',
+      amenityMode: false,
+      selectedAmenityId: null,
+      amenityImageIndex: 0
     });
   },
 
@@ -142,11 +201,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setClientIdentity: (id, name) => {
     console.log('[Store] Client identity →', { id, name });
+    localStorage.setItem('jp_client_id', id);
+    localStorage.setItem('jp_display_name', name);
+    localStorage.setItem('cast_client_id', id);
+    localStorage.setItem('salesperson_name', name);
     set({ clientId: id, displayName: name });
   },
 
   setUserRole: (role) => {
     console.log('[Store] User role →', role);
+    if (role) {
+      localStorage.setItem('jp_user_role', role);
+    }
     set({ userRole: role });
   },
 
@@ -191,6 +257,148 @@ export const useAppStore = create<AppState>((set, get) => ({
         availabilityList: newAvailabilityList
       };
     });
+  },
+
+  // ========== Amenity Actions ==========
+
+  enterAmenityMode: () => {
+    console.log('[Store] Entering amenity mode');
+    set({
+      amenityMode: true,
+      selectedAmenityId: null,
+      amenityImageIndex: 0,
+      currentFloor: 16,
+      currentMode: 'amenity',
+      currentRoom: null,
+      currentDirection: null
+    });
+  },
+
+  exitAmenityMode: () => {
+    console.log('[Store] Exiting amenity mode');
+    set({
+      amenityMode: false,
+      selectedAmenityId: null,
+      amenityImageIndex: 0,
+      currentMode: 'floor'
+    });
+  },
+
+  selectAmenity: (amenityId: string) => {
+    console.log('[Store] Select amenity →', amenityId);
+    set({
+      selectedAmenityId: amenityId,
+      amenityImageIndex: 0,
+      currentMode: 'amenity'
+    });
+  },
+
+  deselectAmenity: () => {
+    console.log('[Store] Deselect amenity');
+    set({
+      selectedAmenityId: null,
+      amenityImageIndex: 0
+    });
+  },
+
+  setAmenityImageIndex: (index: number) => {
+    console.log('[Store] Amenity image index →', index);
+    set({ amenityImageIndex: index });
+  },
+
+  getSelectedAmenity: () => {
+    const { selectedAmenityId } = get();
+    if (!selectedAmenityId) return null;
+    return AMENITIES_CONFIG.find(a => a.id === selectedAmenityId) || null;
+  },
+
+  // ========== Cast Lock Actions ==========
+
+  updateCastLock: (locked, clientId, name) => {
+    console.log('[Store] Cast lock →', { locked, clientId, name });
+    set({
+      castLocked: locked,
+      castLockedByClientId: clientId,
+      castLockedByName: name
+    });
+  },
+
+  isCastLockedByOther: () => {
+    const { castLocked, castLockedByClientId, clientId } = get();
+    return castLocked && castLockedByClientId !== null && castLockedByClientId !== clientId;
+  },
+
+  setAutoCasting: (active) => {
+    console.log('[Store] Auto-casting →', active);
+    set({ autoCasting: active });
+  },
+
+  setAutoCastAbort: (abort) => {
+    set({ autoCastAbort: abort });
+  },
+
+  // Get all images for current view (used by auto-cast)
+  getCurrentViewImages: () => {
+    const state = get();
+    const images: { src: string; metadata: any }[] = [];
+
+    if (state.amenityMode && state.selectedAmenityId) {
+      // Amenity mode: gather all amenity images
+      const amenity = AMENITIES_CONFIG.find(a => a.id === state.selectedAmenityId);
+      if (amenity) {
+        amenity.images.forEach((img, idx) => {
+          images.push({
+            src: `/amenities/${img}`,
+            metadata: {
+              floor: 16,
+              amenity: amenity.name,
+              amenityId: amenity.id,
+              imageIndex: idx,
+              type: 'amenity'
+            }
+          });
+        });
+      }
+    } else if (state.currentMode === 'view' && state.currentRoom && state.currentDirection) {
+      // View mode: single direction view
+      const views = state.viewsByRoom.get(state.currentRoom);
+      const view = views?.find(v => v.direction === state.currentDirection);
+      if (view) {
+        images.push({
+          src: `/view/${view.filename}`,
+          metadata: {
+            floor: state.currentFloor,
+            room: state.currentRoom,
+            direction: state.currentDirection,
+            type: 'view'
+          }
+        });
+      }
+    } else if (state.currentMode === 'room' && state.currentRoom) {
+      // Room mode: room overview
+      images.push({
+        src: `/rooms/r${state.currentRoom}.png`,
+        metadata: {
+          floor: state.currentFloor,
+          room: state.currentRoom,
+          type: 'room'
+        }
+      });
+    } else if (state.currentMode === 'floor' && state.currentFloor) {
+      // Floor mode: floor plan
+      const imageVal = state.floorToImageVal.get(state.currentFloor);
+      if (imageVal) {
+        images.push({
+          src: `/floors/${imageVal}.png`,
+          metadata: {
+            floor: state.currentFloor,
+            type: 'floor'
+          }
+        });
+      }
+    }
+
+    return images;
   },
 
   loadCSVData: async () => {
@@ -295,7 +503,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         const availList: AvailabilityData[] = [];
 
         console.log('[CSV] Parsing availability.csv rows (skipping header)...');
-        console.log('[CSV] ⚠️ IMPORTANT: Filtering out lobby rooms (CSV rooms 1-2)');
 
         for (let i = 1; i < availLines.length; i++) {
           const line = availLines[i];
@@ -311,9 +518,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           const statusCode = parseInt(status);
 
           if (csvRoom < 3 || csvRoom > 8) {
-            if (i <= 20) {
-              console.log(`[CSV] ⏭️ Skipping lobby: Floor ${floor}, CSV Room ${csvRoom}`);
-            }
             continue;
           }
 
@@ -328,11 +532,6 @@ export const useAppStore = create<AppState>((set, get) => ({
               room: uiRoom,
               status: statusCode
             });
-            
-            if (availList.length <= 10) {
-              const statusName = statusCode === 0 ? 'SOLD' : statusCode === 1 ? 'AVAILABLE' : 'BLOCKED';
-              console.log(`[CSV] ✅ Floor ${floor}, CSV Room ${csvRoom} → UI Room ${uiRoom}: ${statusName}`);
-            }
           }
         }
 
@@ -352,8 +551,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           availabilityList: availList,
           csvLoaded: true
         });
-
-        console.log('[Store][CSV] ✅ State updated successfully with availability data');
       }
 
       console.groupEnd();
@@ -365,7 +562,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // NEW: Check authentication on app load
   checkAuth: () => {
     const savedRole = localStorage.getItem('jp_user_role') as 'sales' | 'admin' | null;
     const savedPage = localStorage.getItem('jp_current_page') as 'home' | 'floorMap' | 'admin' | null;
@@ -382,7 +578,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         displayName: savedDisplayName
       });
       
-      // Load CSV data if not already loaded
       const { csvLoaded, loadCSVData } = get();
       if (!csvLoaded) {
         loadCSVData();
@@ -393,17 +588,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // NEW: Logout function
   logout: () => {
     console.log('[Store] Logging out');
     
-    // Clear localStorage
     localStorage.removeItem('jp_user_role');
     localStorage.removeItem('jp_current_page');
     localStorage.removeItem('jp_client_id');
     localStorage.removeItem('jp_display_name');
     
-    // Reset state
     set({
       currentPage: 'login',
       userRole: null,
@@ -412,7 +604,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentFloor: null,
       currentRoom: null,
       currentDirection: null,
-      currentMode: 'floor'
+      currentMode: 'floor',
+      amenityMode: false,
+      selectedAmenityId: null,
+      amenityImageIndex: 0,
+      isCasting: false,
+      autoCasting: false,
+      autoCastAbort: false
     });
   },
 
@@ -423,7 +621,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentRoom: null,
       currentDirection: null,
       currentMode: 'floor',
-      currentPage: 'home'
+      currentPage: 'home',
+      amenityMode: false,
+      selectedAmenityId: null,
+      amenityImageIndex: 0
     });
   }
 }));

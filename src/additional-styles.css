@@ -1,0 +1,30 @@
+/* ============================================
+   ADDITIONAL STYLES - AMENITY MODE & CAST LOCK
+   Append to improved-style.css
+   ============================================ */
+
+/* Cast banner when another user is casting */
+.cast-banner.other-casting {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Floor selector in amenity mode - scrollbar */
+.floor-selector::-webkit-scrollbar {
+  width: 4px;
+}
+
+.floor-selector::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.floor-selector::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+}
+
+.floor-selector::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.3);
+}

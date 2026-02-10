@@ -1,4 +1,3 @@
-
 const URL  =  "wss://mqtt.modelsofbrainwing.com:8083/mqtt";
 const USER =  "reactuser";
 const PASS =  "scaleModel";
@@ -115,12 +114,16 @@ export function stopHeartbeat(): void {
   hbTimer = null;
 }
 
-// FIXED: Send cast state directly to cast/state topic with retain
+/**
+ * Send cast request with locking.
+ * The cast/state retained message includes lock info so all clients can see who is casting.
+ */
 export async function sendCastRequest(imageSrc: string, metadata: any, holderName: string): Promise<void> {
-  const clientId = localStorage.getItem('cast_client_id') || '';
+  const clientId = localStorage.getItem('cast_client_id') || localStorage.getItem('jp_client_id') || '';
   
   const castState = {
     active: true,
+    locked: true,                  // Cast is now locked
     holderClientId: clientId,
     holderName: holderName,
     imageSrc: imageSrc,
@@ -128,15 +131,19 @@ export async function sendCastRequest(imageSrc: string, metadata: any, holderNam
     ts: Date.now()
   };
   
-  console.log('[MQTT] Sending cast request:', castState);
+  console.log('[MQTT] Sending cast request (locked):', castState);
   
-  // Publish to cast/state with RETAIN flag
-  await publish(t("cast/state"), castState, { qos: 0, retain: true });
+  // Publish to cast/state with RETAIN flag so all clients see the lock
+  await publish(t("cast/state"), castState, { qos: 1, retain: true });
 }
 
+/**
+ * Release cast and unlock for others.
+ */
 export async function sendCastRelease(): Promise<void> {
   const castState = {
     active: false,
+    locked: false,                 // Unlock cast
     holderClientId: null,
     holderName: null,
     imageSrc: null,
@@ -144,15 +151,15 @@ export async function sendCastRelease(): Promise<void> {
     ts: Date.now()
   };
   
-  console.log('[MQTT] Releasing cast');
+  console.log('[MQTT] Releasing cast (unlocked)');
   
   // Publish to cast/state with RETAIN flag
-  await publish(t("cast/state"), castState, { qos: 0, retain: true });
+  await publish(t("cast/state"), castState, { qos: 1, retain: true });
 }
 
 export async function sendCommand(type: string, data: any = {}): Promise<void> {
-  const clientId = localStorage.getItem('cast_client_id') || '';
-  const clientName = localStorage.getItem('salesperson_name') || 'Salesperson';
+  const clientId = localStorage.getItem('cast_client_id') || localStorage.getItem('jp_client_id') || '';
+  const clientName = localStorage.getItem('salesperson_name') || localStorage.getItem('jp_display_name') || 'Salesperson';
   
   const payload = {
     type,
