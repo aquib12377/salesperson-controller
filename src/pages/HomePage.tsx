@@ -14,7 +14,8 @@ export default function HomePage({ active }: Props) {
     setDeviceAlive, 
     logout,
     updateCastLock,
-    setCastState
+    setCastState,
+    setFollowCasting
   } = useAppStore();
 
   // MQTT connection setup
@@ -76,8 +77,9 @@ export default function HomePage({ active }: Props) {
             if (payload.active && payload.holderClientId === myClientId) {
               setCastState(true, payload.holderClientId, payload.holderName);
             } else if (!payload.active) {
-              // Cast released - if it was our cast, mark as not casting
+              // Cast released - clear casting and follow mode
               setCastState(false, null, null);
+              setFollowCasting(false);
             }
             
             return;
@@ -112,7 +114,7 @@ export default function HomePage({ active }: Props) {
         // ignore
       }
     };
-  }, [setConnected, setDeviceAlive, updateCastLock, setCastState]);
+  }, [setConnected, setDeviceAlive, updateCastLock, setCastState, setFollowCasting]);
 
   useEffect(() => {
     if (active && (window as any).lucide) {

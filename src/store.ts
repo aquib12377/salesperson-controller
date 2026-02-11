@@ -43,8 +43,7 @@ interface AppState {
   castLocked: boolean;              // Whether cast is locked by someone
   castLockedByClientId: string | null;
   castLockedByName: string | null;
-  autoCasting: boolean;             // Whether auto-cast is in progress
-  autoCastAbort: boolean;           // Signal to abort auto-cast
+  followCasting: boolean;           // Follow mode: auto-cast on every navigation change
 
   controlsSidebarOpen: boolean;
   relayState: { surrounding: boolean; terrace: boolean };
@@ -79,8 +78,7 @@ interface AppState {
   // Cast locking actions
   updateCastLock: (locked: boolean, clientId: string | null, name: string | null) => void;
   isCastLockedByOther: () => boolean;
-  setAutoCasting: (active: boolean) => void;
-  setAutoCastAbort: (abort: boolean) => void;
+  setFollowCasting: (active: boolean) => void;
   
   // Helper to get all current view images for auto-cast
   getCurrentViewImages: () => { src: string; metadata: any }[];
@@ -120,8 +118,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   castLocked: false,
   castLockedByClientId: null,
   castLockedByName: null,
-  autoCasting: false,
-  autoCastAbort: false,
+  followCasting: false,
 
   controlsSidebarOpen: false,
   relayState: { surrounding: false, terrace: false },
@@ -328,13 +325,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     return castLocked && castLockedByClientId !== null && castLockedByClientId !== clientId;
   },
 
-  setAutoCasting: (active) => {
-    console.log('[Store] Auto-casting →', active);
-    set({ autoCasting: active });
-  },
-
-  setAutoCastAbort: (abort) => {
-    set({ autoCastAbort: abort });
+  setFollowCasting: (active) => {
+    console.log('[Store] Follow-casting →', active);
+    set({ followCasting: active });
   },
 
   // Get all images for current view (used by auto-cast)
@@ -609,8 +602,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedAmenityId: null,
       amenityImageIndex: 0,
       isCasting: false,
-      autoCasting: false,
-      autoCastAbort: false
+      followCasting: false
     });
   },
 

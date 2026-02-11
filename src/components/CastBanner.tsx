@@ -1,14 +1,16 @@
 import { useAppStore } from '../store';
 
 export default function CastBanner() {
-  const { isCasting, castHolderName, castLocked, castLockedByName, clientId, castLockedByClientId } = useAppStore();
+  const { isCasting, castHolderName, castLocked, castLockedByName, clientId, castLockedByClientId, followCasting } = useAppStore();
 
   // Show banner when someone is casting
   const isActive = castLocked || isCasting;
   const isOtherCasting = castLocked && castLockedByClientId !== clientId;
   
   let displayText = 'Idle';
-  if (isCasting) {
+  if (isCasting && followCasting) {
+    displayText = 'You are casting (live)';
+  } else if (isCasting) {
     displayText = 'You are casting';
   } else if (isOtherCasting && castLockedByName) {
     displayText = `${castLockedByName} is casting`;

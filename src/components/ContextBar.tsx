@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store';
 import { sendCastRequest, sendCastRelease } from '../mqtt';
 import { AMENITIES_CONFIG } from '../amenitiesData';
@@ -32,31 +32,57 @@ export default function ContextBar() {
     castLockedByClientId,
     isCastLockedByOther,
     getCurrentViewImages,
-    autoCasting,
-    setAutoCasting,
-    setAutoCastAbort,
-    autoCastAbort,
+    followCasting,
+    setFollowCasting,
     setCastState,
     setAmenityImageIndex,
     toggleControlsSidebar
   } = useAppStore();
 
   const [castMessage, setCastMessage] = useState<string | null>(null);
-  const autoCastRef = useRef<boolean>(false);
+
+  // ===== Follow-casting: auto-cast whenever navigation state changes =====
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    // Skip the very first render
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
+    // Only auto-cast if follow mode is active
+    if (!isCasting || !followCasting) return;
+
+    const images = getCurrentViewImages();
+    if (images.length > 0) {
+      const img = images[0]; // Cast the primary/current image
+      console.log('[ContextBar] Follow-cast → auto-casting:', img.src);
+      sendCastRequest(img.src, img.metadata, displayName);
+    }
+  }, [
+    // Trigger on any navigation change
+    currentFloor,
+    currentRoom,
+    currentDirection,
+    currentMode,
+    amenityMode,
+    selectedAmenityId,
+    amenityImageIndex,
+    // Dependencies for the cast logic
+    isCasting,
+    followCasting
+  ]);
 
   const selectedAmenity = selectedAmenityId 
     ? AMENITIES_CONFIG.find(a => a.id === selectedAmenityId) 
     : null;
 
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
   const handleCast = useCallback(async () => {
     // If already casting, stop
     if (isCasting) {
-      console.log('[ContextBar] Stopping cast');
-      autoCastRef.current = false;
-      setAutoCastAbort(true);
-      setAutoCasting(false);
+      console.log('[ContextBar] Stopping follow-cast');
+      setFollowCasting(false);
       await sendCastRelease();
       setCastState(false, null, null);
       return;
@@ -71,7 +97,7 @@ export default function ContextBar() {
       return;
     }
 
-    // Gather all current view images
+    // Get current view image
     const images = getCurrentViewImages();
     
     if (images.length === 0) {
@@ -81,67 +107,26 @@ export default function ContextBar() {
       return;
     }
 
-    console.log(`[ContextBar] Starting auto-cast for ${images.length} image(s)`);
+    console.log('[ContextBar] Starting follow-cast mode');
     
-    // Mark as casting
+    // Mark as casting and enable follow mode
     setCastState(true, clientId, displayName);
-    setAutoCastAbort(false);
-    autoCastRef.current = true;
+    setFollowCasting(true);
 
-    if (images.length === 1) {
-      // Single image - just cast it
-      await sendCastRequest(images[0].src, images[0].metadata, displayName);
-      console.log('[ContextBar] Single image cast:', images[0].src);
-    } else {
-      // Multiple images - auto-cycle through all
-      setAutoCasting(true);
-      
-      for (let i = 0; i < images.length; i++) {
-        // Check if cast was stopped
-        if (!autoCastRef.current) {
-          console.log('[ContextBar] Auto-cast aborted');
-          break;
-        }
-        
-        const img = images[i];
-        console.log(`[ContextBar] Auto-casting image ${i + 1}/${images.length}:`, img.src);
-        
-        // If amenity, also update the displayed image index
-        if (img.metadata.type === 'amenity' && img.metadata.imageIndex !== undefined) {
-          setAmenityImageIndex(img.metadata.imageIndex);
-        }
-        
-        await sendCastRequest(img.src, img.metadata, displayName);
-        
-        // Wait between images (5 seconds), except for the last one
-        if (i < images.length - 1 && autoCastRef.current) {
-          // Wait in small increments so we can check for abort
-          for (let w = 0; w < 50; w++) {
-            if (!autoCastRef.current) break;
-            await delay(100); // 50 * 100ms = 5 seconds
-          }
-        }
-      }
-      
-      setAutoCasting(false);
-      
-      // If not manually stopped, keep last image on cast
-      if (autoCastRef.current) {
-        console.log('[ContextBar] Auto-cast completed - last image stays on screen');
-      }
-    }
-  }, [isCasting, isCastLockedByOther, castLockedByName, getCurrentViewImages, clientId, displayName, setCastState, setAutoCasting, setAutoCastAbort, setAmenityImageIndex]);
+    // Cast the current image immediately
+    const img = images[0];
+    await sendCastRequest(img.src, img.metadata, displayName);
+    console.log('[ContextBar] Initial cast:', img.src);
+
+  }, [isCasting, isCastLockedByOther, castLockedByName, getCurrentViewImages, clientId, displayName, setCastState, setFollowCasting]);
 
   const handleBackNavigation = () => {
     if (amenityMode && selectedAmenityId) {
-      // Back from amenity view to amenity list
       deselectAmenity();
     } else if (amenityMode) {
-      // Back from amenity list to home
       exitAmenityMode();
       selectFloor(null);
     } else {
-      // Normal back to home
       selectFloor(null);
     }
   };
@@ -176,7 +161,6 @@ export default function ContextBar() {
   // Determine cast button state
   const canCast = getCurrentViewImages().length > 0;
   const castLockBlocked = isCastLockedByOther();
-  const imageCount = getCurrentViewImages().length;
 
   return (
     <>
@@ -189,11 +173,11 @@ export default function ContextBar() {
             </svg>
             <span>Back</span>
           </button>
-          <span className="breadcrumb-separator">›</span>
+          <span className="breadcrumb-separator">{'\u203A'}</span>
           <div className="breadcrumb-items">
             {breadcrumbItems.map((item, idx) => (
               <span key={idx}>
-                {idx > 0 && <span className="breadcrumb-separator">›</span>}
+                {idx > 0 && <span className="breadcrumb-separator">{'\u203A'}</span>}
                 <span className="breadcrumb-item">{item.label}</span>
               </span>
             ))}
@@ -223,8 +207,8 @@ export default function ContextBar() {
               castLockBlocked 
                 ? `Cast locked by ${castLockedByName}` 
                 : isCasting 
-                  ? 'Stop casting' 
-                  : `Cast ${imageCount > 1 ? `all ${imageCount} images` : 'to TV'}`
+                  ? 'Stop casting (follow mode)' 
+                  : 'Cast to TV (follows navigation)'
             }
           >
             {isCasting ? (
@@ -245,10 +229,10 @@ export default function ContextBar() {
             )}
             <span>
               {isCasting 
-                ? (autoCasting ? 'Stop Auto' : 'Stop') 
+                ? 'Stop Cast' 
                 : castLockBlocked 
                   ? 'Locked' 
-                  : (imageCount > 1 ? `Cast All (${imageCount})` : 'Cast')
+                  : 'Cast'
               }
             </span>
           </button>
@@ -267,11 +251,11 @@ export default function ContextBar() {
         </div>
       )}
 
-      {/* Auto-cast progress indicator */}
-      {autoCasting && (
-        <div className="auto-cast-indicator">
-          <div className="auto-cast-spinner"></div>
-          <span>Auto-casting images...</span>
+      {/* Follow-cast active indicator */}
+      {isCasting && followCasting && (
+        <div className="follow-cast-indicator">
+          <div className="follow-cast-dot"></div>
+          <span>Live casting — navigating will update the TV</span>
         </div>
       )}
 
@@ -318,12 +302,12 @@ export default function ContextBar() {
           }
         }
 
-        .auto-cast-indicator {
+        .follow-cast-indicator {
           position: fixed;
           bottom: 80px;
           left: 50%;
           transform: translateX(-50%);
-          background: rgba(99, 102, 241, 0.9);
+          background: rgba(34, 197, 94, 0.9);
           color: white;
           padding: 0.6rem 1.25rem;
           border-radius: 9999px;
@@ -333,21 +317,22 @@ export default function ContextBar() {
           align-items: center;
           gap: 0.5rem;
           z-index: 500;
-          box-shadow: 0 4px 20px rgba(99, 102, 241, 0.5);
+          box-shadow: 0 4px 20px rgba(34, 197, 94, 0.5);
           backdrop-filter: blur(8px);
+          animation: toast-in 0.3s ease;
         }
 
-        .auto-cast-spinner {
-          width: 16px;
-          height: 16px;
-          border: 2px solid rgba(255,255,255,0.3);
-          border-top-color: white;
+        .follow-cast-dot {
+          width: 10px;
+          height: 10px;
+          background: white;
           border-radius: 50%;
-          animation: spin 0.8s linear infinite;
+          animation: pulse-dot 1.5s ease-in-out infinite;
         }
 
-        @keyframes spin {
-          to { transform: rotate(360deg); }
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.7); }
         }
       `}</style>
     </>
