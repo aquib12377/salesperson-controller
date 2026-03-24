@@ -14,13 +14,19 @@ export default function FloorSelector() {
     deselectAmenity
   } = useAppStore();
 
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
   const handleFloorClick = async (floorId: number) => {
     console.log(`[FloorSelector] Floor ${floorId} clicked`);
 
     // Navigate to floor
     selectFloor(floorId);
 
-    // Send LED command to turn floor ON (white)
+    // Turn off all floors first so only the selected floor lights up
+    await sendCommand('set_all_floors_off');
+    await delay(100);
+
+    // Send LED command to turn selected floor ON
     if (floorId >= 3 && floorId <= 15) {
       console.log(`[FloorSelector] Sending LED command for floor ${floorId}`);
       if (floorId === 15) {
