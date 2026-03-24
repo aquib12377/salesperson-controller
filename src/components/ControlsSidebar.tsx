@@ -99,6 +99,16 @@ export default function ControlsSidebar() {
   
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+  const handleAllOff = async () => {
+    await sendCommand('set_all_floors_off');
+    if (relayState.surrounding) {
+      await sendCommand('relay_toggle', { relay: 'surrounding' });
+    }
+    if (relayState.terrace) {
+      await sendCommand('relay_toggle', { relay: 'terrace' });
+    }
+  };
+
   return (
     <>
       <div className={`controls-sidebar ${controlsSidebarOpen ? 'active' : ''}`}>
@@ -117,7 +127,7 @@ export default function ControlsSidebar() {
                 <button onClick={handleAllLights} className="control-btn">
                   All Lights
                 </button>
-                <button onClick={() => sendCommand('set_all_floors_off')} className="control-btn">
+                <button onClick={handleAllOff} className="control-btn">
                   All OFF
                 </button>
                 <button onClick={() => sendCommand('classic_all')} className="control-btn">

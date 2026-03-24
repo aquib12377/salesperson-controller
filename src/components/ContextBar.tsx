@@ -10,13 +10,15 @@ function getRoomNumber(floor: number | null, room: string | null): string {
 }
 
 export default function ContextBar() {
-  const { 
-    currentFloor, 
-    currentRoom, 
-    currentDirection, 
+  const {
+    currentFloor,
+    currentRoom,
+    currentDirection,
     currentMode,
-    isCasting, 
+    isCasting,
     selectFloor,
+    selectRoom,
+    selectDirection,
     floorToImageVal,
     viewsByRoom,
     displayName,
@@ -40,6 +42,28 @@ export default function ContextBar() {
   } = useAppStore();
 
   const [castMessage, setCastMessage] = useState<string | null>(null);
+
+  // ===== Auto-stop cast after 15 minutes =====
+  const castTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isCasting) {
+      castTimerRef.current = setTimeout(async () => {
+        console.log('[ContextBar] Auto-stopping cast after 15 minutes');
+        setFollowCasting(false);
+        await sendCastRelease();
+        setCastState(false, null, null);
+      }, 15 * 60 * 1000);
+    } else {
+      if (castTimerRef.current) {
+        clearTimeout(castTimerRef.current);
+        castTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (castTimerRef.current) clearTimeout(castTimerRef.current);
+    };
+  }, [isCasting]);
 
   // ===== Follow-casting: auto-cast whenever navigation state changes =====
   const isFirstRender = useRef(true);
@@ -137,21 +161,33 @@ export default function ContextBar() {
   const breadcrumbItems: { label: string; onClick?: () => void }[] = [];
   
   if (amenityMode) {
-    breadcrumbItems.push({ label: 'Amenities' });
+    breadcrumbItems.push({
+      label: 'Amenities',
+      onClick: selectedAmenityId ? () => deselectAmenity() : undefined
+    });
     if (selectedAmenity) {
-      breadcrumbItems.push({ label: selectedAmenity.name });
+      breadcrumbItems.push({
+        label: selectedAmenity.name,
+        onClick: selectedAmenity.images.length > 1 ? () => setAmenityImageIndex(0) : undefined
+      });
       if (selectedAmenity.images.length > 1) {
-        breadcrumbItems.push({ 
-          label: selectedAmenity.imageLabels[amenityImageIndex] || `View ${amenityImageIndex + 1}` 
+        breadcrumbItems.push({
+          label: selectedAmenity.imageLabels[amenityImageIndex] || `View ${amenityImageIndex + 1}`
         });
       }
     }
   } else {
     if (currentFloor) {
-      breadcrumbItems.push({ label: `Floor ${currentFloor}` });
+      breadcrumbItems.push({
+        label: `Floor ${currentFloor}`,
+        onClick: currentRoom ? () => selectRoom(null) : undefined
+      });
     }
     if (currentRoom) {
-      breadcrumbItems.push({ label: `Room ${roomNumber}` });
+      breadcrumbItems.push({
+        label: `Room ${roomNumber}`,
+        onClick: currentDirection ? () => selectDirection(null) : undefined
+      });
     }
     if (currentDirection) {
       breadcrumbItems.push({ label: currentDirection });
@@ -178,7 +214,13 @@ export default function ContextBar() {
             {breadcrumbItems.map((item, idx) => (
               <span key={idx}>
                 {idx > 0 && <span className="breadcrumb-separator">{'\u203A'}</span>}
-                <span className="breadcrumb-item">{item.label}</span>
+                {item.onClick ? (
+                  <button className="breadcrumb-item clickable" onClick={item.onClick}>
+                    {item.label}
+                  </button>
+                ) : (
+                  <span className="breadcrumb-item">{item.label}</span>
+                )}
               </span>
             ))}
           </div>
@@ -260,6 +302,23 @@ export default function ContextBar() {
       )}
 
       <style>{`
+        .breadcrumb-item.clickable {
+          background: none;
+          border: none;
+          color: inherit;
+          font: inherit;
+          padding: 0;
+          cursor: pointer;
+          text-decoration: underline dotted rgba(255, 255, 255, 0.5);
+          opacity: 0.8;
+          transition: opacity 0.15s;
+        }
+
+        .breadcrumb-item.clickable:hover {
+          opacity: 1;
+          text-decoration: underline solid rgba(255, 255, 255, 0.9);
+        }
+
         .cast-btn-top.locked {
           background: rgba(239, 68, 68, 0.3);
           border-color: rgba(239, 68, 68, 0.5);
