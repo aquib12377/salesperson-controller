@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store';
 import { sendCastRequest, sendCastRelease } from '../mqtt';
 import { AMENITIES_CONFIG } from '../amenitiesData';
@@ -41,8 +41,6 @@ export default function ContextBar() {
     toggleControlsSidebar
   } = useAppStore();
 
-  const [castMessage, setCastMessage] = useState<string | null>(null);
-
   // ===== Auto-stop cast after 15 minutes =====
   const castTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -67,25 +65,28 @@ export default function ContextBar() {
 
   // ===== Follow-casting: auto-cast whenever navigation state changes =====
   const isFirstRender = useRef(true);
+  const prevCastingRef = useRef(false);
 
   useEffect(() => {
-    // Skip the very first render
+    const justStarted = !prevCastingRef.current && isCasting;
+    prevCastingRef.current = isCasting;
+
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
 
-    // Only auto-cast if follow mode is active
     if (!isCasting || !followCasting) return;
+    // handleCast already sent the first frame; skip the false→true transition
+    if (justStarted) return;
 
     const images = getCurrentViewImages();
     if (images.length > 0) {
-      const img = images[0]; // Cast the primary/current image
+      const img = images[0];
       console.log('[ContextBar] Follow-cast → auto-casting:', img.src);
       sendCastRequest(img.src, img.metadata, displayName);
     }
   }, [
-    // Trigger on any navigation change
     currentFloor,
     currentRoom,
     currentDirection,
@@ -93,14 +94,23 @@ export default function ContextBar() {
     amenityMode,
     selectedAmenityId,
     amenityImageIndex,
-    // Dependencies for the cast logic
     isCasting,
-    followCasting
+    followCasting,
+    displayName,
+    getCurrentViewImages,
   ]);
 
   const selectedAmenity = selectedAmenityId 
     ? AMENITIES_CONFIG.find(a => a.id === selectedAmenityId) 
     : null;
+
+  // Best-effort release when the holder closes/refreshes the tab
+  useEffect(() => {
+    if (!isCasting) return;
+    const handler = () => { sendCastRelease(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isCasting]);
 
   const handleCast = useCallback(async () => {
     // If already casting, stop
@@ -112,27 +122,15 @@ export default function ContextBar() {
       return;
     }
 
-    // Check if cast is locked by another user
-    if (isCastLockedByOther()) {
-      const lockedBy = castLockedByName || 'another user';
-      setCastMessage(`Cast is in use by ${lockedBy}`);
-      setTimeout(() => setCastMessage(null), 3000);
-      console.warn(`[ContextBar] Cast locked by ${lockedBy}`);
-      return;
-    }
-
     // Get current view image
     const images = getCurrentViewImages();
-    
     if (images.length === 0) {
       console.warn('[ContextBar] No images to cast');
-      setCastMessage('No images to cast');
-      setTimeout(() => setCastMessage(null), 2000);
       return;
     }
 
     console.log('[ContextBar] Starting follow-cast mode');
-    
+
     // Mark as casting and enable follow mode
     setCastState(true, clientId, displayName);
     setFollowCasting(true);
@@ -142,7 +140,7 @@ export default function ContextBar() {
     await sendCastRequest(img.src, img.metadata, displayName);
     console.log('[ContextBar] Initial cast:', img.src);
 
-  }, [isCasting, isCastLockedByOther, castLockedByName, getCurrentViewImages, clientId, displayName, setCastState, setFollowCasting]);
+  }, [isCasting, getCurrentViewImages, clientId, displayName, setCastState, setFollowCasting]);
 
   const handleBackNavigation = () => {
     if (amenityMode && selectedAmenityId) {
@@ -241,15 +239,15 @@ export default function ContextBar() {
               </svg>
             </button>
           )}
-          <button 
-            onClick={handleCast} 
-            className={`cast-btn-top ${isCasting ? 'active' : ''} ${castLockBlocked ? 'locked' : ''}`}
+          <button
+            onClick={handleCast}
+            className={`cast-btn-top ${isCasting ? 'active' : ''}`}
             disabled={!canCast && !isCasting}
             title={
-              castLockBlocked 
-                ? `Cast locked by ${castLockedByName}` 
-                : isCasting 
-                  ? 'Stop casting (follow mode)' 
+              castLockBlocked
+                ? `Take over from ${castLockedByName}`
+                : isCasting
+                  ? 'Stop casting (follow mode)'
                   : 'Cast to TV (follows navigation)'
             }
           >
@@ -258,40 +256,16 @@ export default function ContextBar() {
                 <rect x="6" y="4" width="4" height="16"></rect>
                 <rect x="14" y="4" width="4" height="16"></rect>
               </svg>
-            ) : castLockBlocked ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-              </svg>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"></path>
                 <line x1="2" y1="20" x2="2.01" y2="20"></line>
               </svg>
             )}
-            <span>
-              {isCasting 
-                ? 'Stop Cast' 
-                : castLockBlocked 
-                  ? 'Locked' 
-                  : 'Cast'
-              }
-            </span>
+            <span>{isCasting ? 'Stop Cast' : 'Cast'}</span>
           </button>
         </div>
       </div>
-
-      {/* Cast lock message toast */}
-      {castMessage && (
-        <div className="cast-message-toast">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-          <span>{castMessage}</span>
-        </div>
-      )}
 
       {/* Follow-cast active indicator */}
       {isCasting && followCasting && (
@@ -319,35 +293,9 @@ export default function ContextBar() {
           text-decoration: underline solid rgba(255, 255, 255, 0.9);
         }
 
-        .cast-btn-top.locked {
-          background: rgba(239, 68, 68, 0.3);
-          border-color: rgba(239, 68, 68, 0.5);
-          cursor: not-allowed;
-        }
-
         .cast-btn-top:disabled {
           opacity: 0.4;
           cursor: not-allowed;
-        }
-
-        .cast-message-toast {
-          position: fixed;
-          top: 80px;
-          left: 50%;
-          transform: translateX(-50%);
-          background: rgba(239, 68, 68, 0.9);
-          color: white;
-          padding: 0.75rem 1.5rem;
-          border-radius: 0.75rem;
-          font-size: 14px;
-          font-weight: 600;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          z-index: 500;
-          box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
-          animation: toast-in 0.3s ease;
-          backdrop-filter: blur(8px);
         }
 
         @keyframes toast-in {
