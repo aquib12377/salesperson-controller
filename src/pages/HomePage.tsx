@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { getClient, subscribe, onMessage, recordAck, startHeartbeat, stopHeartbeat, isDeviceAlive, t } from '../mqtt';
+import { getClient, subscribe, onMessage, recordAck, startHeartbeat, stopHeartbeat, isDeviceAlive, t, sendCastRelease } from '../mqtt';
 
 interface Props { active: boolean; }
 
@@ -60,28 +60,35 @@ export default function HomePage({ active }: Props) {
         try {
           const payload = JSON.parse(s);
           
-          // Handle cast/state messages for lock management
           if (topic === t('cast/state')) {
             console.log('[HomePage] Cast state received:', payload);
-            
+
             const myClientId = localStorage.getItem('jp_client_id') || '';
-            
-            // Update cast lock state
+
+            // Stale-lock TTL: retained lock older than 15 min → clear it for everyone
+            if (payload.locked === true && payload.ts && Date.now() - payload.ts > 15 * 60 * 1000) {
+              console.warn('[HomePage] Stale cast lock detected (older than 15 min) — releasing');
+              updateCastLock(false, null, null);
+              setCastState(false, null, null);
+              setFollowCasting(false);
+              sendCastRelease();
+              return;
+            }
+
             updateCastLock(
               payload.locked === true,
               payload.holderClientId || null,
               payload.holderName || null
             );
-            
-            // Update own casting state
+
             if (payload.active && payload.holderClientId === myClientId) {
               setCastState(true, payload.holderClientId, payload.holderName);
-            } else if (!payload.active) {
-              // Cast released - clear casting and follow mode
+            } else {
+              // Cast released, or someone else is now the holder → I am not casting.
               setCastState(false, null, null);
               setFollowCasting(false);
             }
-            
+
             return;
           }
           
