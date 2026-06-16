@@ -27,7 +27,7 @@ export default function FloorSelector() {
     await delay(100);
 
     // Send LED command to turn selected floor ON
-    if (floorId >= 3 && floorId <= 15) {
+    if (floorId >= 1 && floorId <= 15) {
       console.log(`[FloorSelector] Sending LED command for floor ${floorId}`);
       if (floorId === 15) {
         sendCommand('relay_toggle', { relay: 'terrace' });
